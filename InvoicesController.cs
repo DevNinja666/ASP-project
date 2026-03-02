@@ -1,155 +1,115 @@
-using InvoiceManager.Api.Data;
-using InvoiceManager.Api.DTOs;
-using InvoiceManager.Api.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using SmartTaxi.Data;
+using SmartTaxi.Models;
 
-namespace InvoiceManager.Api.Controllers;
-
-[ApiController]
-[Route("api/invoices")]
-public class InvoicesController : ControllerBase
+namespace SmartTaxi.Controllers
 {
-    private readonly AppDbContext _context;
-
-    public InvoicesController(AppDbContext context)
+    [Route("api/[controller]")]
+    [ApiController]
+    public class InvoicesController : ControllerBase
     {
-        _context = context;
-    }
-    [HttpGet]
-    public async Task<ActionResult<IEnumerable<Invoice>>> GetAll()
-    {
-        return await _context.Invoices
-            .Include(i => i.Rows)
-            .ToListAsync();
-    }
+        private readonly AppDbContext _context;
 
-    [HttpGet("{id}")]
-    public async Task<ActionResult<Invoice>> Get(int id)
-    {
-        var invoice = await _context.Invoices
-            .Include(i => i.Rows)
-            .FirstOrDefaultAsync(i => i.Id == id);
-
-        if (invoice == null)
-            return NotFound();
-
-        return invoice;
-    }
-    [HttpPost]
-    public async Task<ActionResult<Invoice>> Create(CreateInvoiceDto dto)
-    {
-        var invoice = new Invoice
+        public InvoicesController(AppDbContext context)
         {
-            CustomerId = dto.CustomerId,
-            StartDate = dto.StartDate,
-            EndDate = dto.EndDate,
-            Comment = dto.Comment,
-            Status = InvoiceStatus.Created,
-            CreatedAt = DateTimeOffset.UtcNow,
-            UpdatedAt = DateTimeOffset.UtcNow
-        };
-
-        foreach (var row in dto.Rows)
+            _context = context;
+        }
+        [HttpGet]
+        public async Task<IActionResult> GetAll(
+            int page = 1,
+            int pageSize = 10,
+            string? search = null,
+            string? sortBy = null)
         {
-            invoice.Rows.Add(new InvoiceRow
+            var query = _context.Invoices
+                .Include(i => i.Customer)
+                .AsQueryable();
+
+            if (!string.IsNullOrEmpty(search))
             {
-                Service = row.Service,
-                Quantity = row.Quantity,
-                Rate = row.Rate
+                query = query.Where(i => i.Customer.Name.Contains(search));
+            }
+
+            if (sortBy == "amount")
+                query = query.OrderBy(i => i.Amount);
+
+            if (sortBy == "date")
+                query = query.OrderBy(i => i.Date);
+
+            var total = await query.CountAsync();
+
+            var invoices = await query
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
+
+            return Ok(new
+            {
+                total,
+                page,
+                pageSize,
+                data = invoices
             });
         }
 
-        invoice.TotalSum = invoice.Rows.Sum(r => r.Sum);
-
-        _context.Invoices.Add(invoice);
-
-        await _context.SaveChangesAsync();
-
-        return Ok(invoice);
-    }
-
-
-    [HttpPut("{id}")]
-    public async Task<IActionResult> Update(int id, UpdateInvoiceDto dto)
-    {
-        var invoice = await _context.Invoices
-            .Include(i => i.Rows)
-            .FirstOrDefaultAsync(i => i.Id == id);
-
-        if (invoice == null)
-            return NotFound();
-
-        if (invoice.Status != InvoiceStatus.Created)
-            return BadRequest("Редактировать можно только не отправленные инвойсы");
-
-        invoice.StartDate = dto.StartDate;
-        invoice.EndDate = dto.EndDate;
-        invoice.Comment = dto.Comment;
-
-        _context.InvoiceRows.RemoveRange(invoice.Rows);
-
-        invoice.Rows = dto.Rows.Select(r => new InvoiceRow
+        [HttpGet("{id}")]
+        public async Task<ActionResult<Invoice>> Get(int id)
         {
-            Service = r.Service,
-            Quantity = r.Quantity,
-            Rate = r.Rate
-        }).ToList();
+            var invoice = await _context.Invoices
+                .Include(i => i.Customer)
+                .FirstOrDefaultAsync(i => i.Id == id);
 
-        invoice.TotalSum = invoice.Rows.Sum(r => r.Quantity * r.Rate);
+            if (invoice == null)
+                return NotFound();
 
-        await _context.SaveChangesAsync();
+            return invoice;
+        }
+        [HttpPost]
+        public async Task<ActionResult<Invoice>> Create(Invoice invoice)
+        {
+            _context.Invoices.Add(invoice);
+            await _context.SaveChangesAsync();
 
-        return Ok(invoice);
-    }
+            return CreatedAtAction(nameof(Get), new { id = invoice.Id }, invoice);
+        }
 
- 
-    [HttpPatch("{id}/status")]
-    public async Task<IActionResult> ChangeStatus(int id, InvoiceStatus status)
-    {
-        var invoice = await _context.Invoices.FindAsync(id);
+        [HttpPut("{id}")]
+        public async Task<IActionResult> Update(int id, Invoice invoice)
+        {
+            if (id != invoice.Id)
+                return BadRequest();
 
-        if (invoice == null)
-            return NotFound();
+            _context.Entry(invoice).State = EntityState.Modified;
 
-        invoice.Status = status;
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                if (!_context.Invoices.Any(e => e.Id == id))
+                    return NotFound();
+                else
+                    throw;
+            }
 
-        await _context.SaveChangesAsync();
+            return NoContent();
+        }
 
-        return Ok(invoice);
-    }
+       
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> Delete(int id)
+        {
+            var invoice = await _context.Invoices.FindAsync(id);
 
-    [HttpDelete("{id}")]
-    public async Task<IActionResult> Delete(int id)
-    {
-        var invoice = await _context.Invoices.FindAsync(id);
+            if (invoice == null)
+                return NotFound();
 
-        if (invoice == null)
-            return NotFound();
+            _context.Invoices.Remove(invoice);
+            await _context.SaveChangesAsync();
 
-        if (invoice.Status != InvoiceStatus.Created)
-            return BadRequest("Удалять можно только не отправленные инвойсы");
-
-        _context.Invoices.Remove(invoice);
-
-        await _context.SaveChangesAsync();
-
-        return NoContent();
-    }
-
-\
-    [HttpPatch("{id}/archive")]
-    public async Task<IActionResult> Archive(int id)
-    {
-        var invoice = await _context.Invoices.FindAsync(id);
-
-        if (invoice == null)
-            return NotFound();
-
-        invoice.DeletedAt = DateTimeOffset.UtcNow;
-
-        await _context.SaveChangesAsync();
-
-        return NoContent();
+            return NoContent();
+        }
     }
 }
