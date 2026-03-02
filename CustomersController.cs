@@ -6,9 +6,6 @@ using Microsoft.EntityFrameworkCore;
 
 namespace InvoiceManager.Api.Controllers;
 
-/// <summary>
-/// Управление клиентами
-/// </summary>
 [ApiController]
 [Route("api/customers")]
 public class CustomersController : ControllerBase
@@ -20,18 +17,60 @@ public class CustomersController : ControllerBase
         _context = context;
     }
 
-    /// <summary>
-    /// Получить список клиентов
-    /// </summary>
+
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Customer>>> GetAll()
+    public async Task<IActionResult> GetAll(
+        [FromQuery] PaginationQuery pagination,
+        string? search,
+        string? sortBy)
     {
-        return await _context.Customers.ToListAsync();
+        var query = _context.Customers.AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            query = query.Where(c => c.Name.Contains(search));
+        }
+
+        if (!string.IsNullOrWhiteSpace(sortBy))
+        {
+            switch (sortBy.ToLower())
+            {
+                case "name":
+                    query = query.OrderBy(c => c.Name);
+                    break;
+
+                case "email":
+                    query = query.OrderBy(c => c.Email);
+                    break;
+
+                default:
+                    query = query.OrderBy(c => c.Id);
+                    break;
+            }
+        }
+        else
+        {
+            query = query.OrderBy(c => c.Id);
+        }
+
+        var total = await query.CountAsync();
+
+    
+        var customers = await query
+            .Skip((pagination.Page - 1) * pagination.PageSize)
+            .Take(pagination.PageSize)
+            .ToListAsync();
+
+        return Ok(new
+        {
+            totalItems = total,
+            page = pagination.Page,
+            pageSize = pagination.PageSize,
+            items = customers
+        });
     }
 
-    /// <summary>
-    /// Получить клиента по Id
-    /// </summary>
+    
     [HttpGet("{id}")]
     public async Task<ActionResult<Customer>> Get(int id)
     {
@@ -43,9 +82,7 @@ public class CustomersController : ControllerBase
         return customer;
     }
 
-    /// <summary>
-    /// Добавить клиента
-    /// </summary>
+   
     [HttpPost]
     public async Task<ActionResult<Customer>> Create(CreateCustomerDto dto)
     {
@@ -60,14 +97,13 @@ public class CustomersController : ControllerBase
         };
 
         _context.Customers.Add(customer);
+
         await _context.SaveChangesAsync();
 
         return Ok(customer);
     }
 
-    /// <summary>
-    /// Редактировать клиента
-    /// </summary>
+    
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(int id, UpdateCustomerDto dto)
     {
@@ -81,14 +117,14 @@ public class CustomersController : ControllerBase
         customer.Email = dto.Email;
         customer.PhoneNumber = dto.PhoneNumber;
 
+        customer.UpdatedAt = DateTimeOffset.UtcNow;
+
         await _context.SaveChangesAsync();
 
         return Ok(customer);
     }
 
-    /// <summary>
-    /// Удаление клиента (hard delete)
-    /// </summary>
+\
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(int id)
     {
@@ -100,7 +136,7 @@ public class CustomersController : ControllerBase
             return NotFound();
 
         if (customer.Invoices.Any(i => i.Status != InvoiceStatus.Created))
-            return BadRequest("Нельзя удалить клиента с отправленными инвойсами");
+            return BadRequest("Нельзя удалить клиента, у которого есть отправленные инвойсы");
 
         _context.Customers.Remove(customer);
 
@@ -109,9 +145,7 @@ public class CustomersController : ControllerBase
         return NoContent();
     }
 
-    /// <summary>
-    /// Архивировать клиента (soft delete)
-    /// </summary>
+ 
     [HttpPatch("{id}/archive")]
     public async Task<IActionResult> Archive(int id)
     {
