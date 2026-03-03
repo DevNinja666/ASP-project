@@ -16,7 +16,11 @@ public class CustomersController : ControllerBase
     {
         _context = context;
     }
-
+/// <summary>
+/// Получить список клиентов
+/// </summary>
+[HttpGet]
+public async Task<IActionResult> GetAll()
 [HttpGet]
 public async Task<IActionResult> GetAll(
     int userId,
