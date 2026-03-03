@@ -38,4 +38,9 @@ public DbSet<User> Users { get; set; }
 
         return base.SaveChangesAsync(cancellationToken);
     }
+
+    modelBuilder.Entity<Customer>()
+    .HasOne(c => c.User)
+    .WithMany(u => u.Customers)
+    .HasForeignKey(c => c.UserId);
 }
