@@ -30,7 +30,44 @@ namespace SmartTaxi.Controllers
             {
                 query = query.Where(i => i.Customer.Name.Contains(search));
             }
+[HttpGet]
+public async Task<IActionResult> GetAll(
+    int page = 1,
+    int pageSize = 10,
+    string? status = null,
+    string? sortBy = null)
+{
+    var query = _context.Invoices
+        .Include(i => i.Rows)
+        .Where(i => i.DeletedAt == null)
+        .AsQueryable();
 
+    if (!string.IsNullOrEmpty(status))
+    {
+        query = query.Where(i => i.Status.ToString() == status);
+    }
+
+    if (sortBy == "date")
+        query = query.OrderBy(i => i.StarDate);
+
+    if (sortBy == "sum")
+        query = query.OrderByDescending(i => i.TotalSum);
+
+    var total = await query.CountAsync();
+
+    var invoices = await query
+        .Skip((page - 1) * pageSize)
+        .Take(pageSize)
+        .ToListAsync();
+
+    return Ok(new
+    {
+        total,
+        page,
+        pageSize,
+        data = invoices
+    });
+}
             if (sortBy == "amount")
                 query = query.OrderBy(i => i.Amount);
 
