@@ -17,7 +17,77 @@ public class CustomersController : ControllerBase
         _context = context;
     }
 
+[HttpGet]
+public async Task<IActionResult> GetAll(
+    int userId,
+    int page = 1,
+    int pageSize = 10,
+    string? search = null,
+    string? sortBy = null)
+{
+    var query = _context.Customers
+        .Where(c => c.UserId == userId && c.DeletedAt == null)
+        .AsQueryable();
 
+    if (!string.IsNullOrEmpty(search))
+    {
+        query = query.Where(c => c.Name.Contains(search));
+    }
+
+    if (sortBy == "name")
+        query = query.OrderBy(c => c.Name);
+
+    if (sortBy == "email")
+        query = query.OrderBy(c => c.Email);
+
+    var total = await query.CountAsync();
+
+    var customers = await query
+        .Skip((page - 1) * pageSize)
+        .Take(pageSize)
+        .ToListAsync();
+
+    return Ok(new
+    {
+        total,
+        page,
+        pageSize,
+        data = customers
+    });[HttpDelete("{id}")]
+public async Task<IActionResult> Delete(int id)
+{
+    var customer = await _context.Customers.FindAsync(id);
+
+    if (customer == null)
+        return NotFound();
+
+    var hasSentInvoices = await _context.Invoices
+        .AnyAsync(i => i.CustomerId == id && i.Status != InvoiceStatus.Created);
+
+    if (hasSentInvoices)
+        return BadRequest("Cannot delete customer with sent invoices");
+
+    _context.Customers.Remove(customer);
+    await _context.SaveChangesAsync();
+
+    return Ok();
+    [HttpPatch("{id}/archive")]
+public async Task<IActionResult> Archive(int id)
+{
+    var customer = await _context.Customers.FindAsync(id);
+
+    if (customer == null)
+        return NotFound();
+
+    customer.DeletedAt = DateTimeOffset.UtcNow;
+    customer.UpdatedAt = DateTimeOffset.UtcNow;
+
+    await _context.SaveChangesAsync();
+
+    return Ok();
+}
+}
+}
     [HttpGet]
     public async Task<IActionResult> GetAll(
         [FromQuery] PaginationQuery pagination,
