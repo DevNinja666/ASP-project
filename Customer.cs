@@ -7,7 +7,8 @@ public class Customer
     public string? Address { get; set; }
     public string Email { get; set; } = null!;
     public string? PhoneNumber { get; set; }
-
+public int UserId { get; set; }
+public User User { get; set; } = null!;
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public DateTimeOffset? DeletedAt { get; set; }
