@@ -22,7 +22,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Invoice>()
             .HasQueryFilter(x => x.DeletedAt == null);
     }
-
+public DbSet<User> Users { get; set; }
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         var modifiedEntries = ChangeTracker.Entries()
