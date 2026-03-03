@@ -147,6 +147,81 @@ public async Task<IActionResult> GetAll(
             await _context.SaveChangesAsync();
 
             return NoContent();
-        }
+        }[HttpPut("{id}")]
+public async Task<IActionResult> Update(int id, Invoice invoice)
+{
+    var existing = await _context.Invoices
+        .Include(i => i.Rows)
+        .FirstOrDefaultAsync(i => i.Id == id);
+
+    if (existing == null)
+        return NotFound();
+
+    if (existing.Status != InvoiceStatus.Created)
+        return BadRequest("Only created invoices can be edited");
+
+    existing.Comment = invoice.Comment;
+    existing.EndDate = invoice.EndDate;
+    existing.StarDate = invoice.StarDate;
+    existing.UpdatedAt = DateTimeOffset.UtcNow;
+
+    await _context.SaveChangesAsync();
+
+    return Ok(existing);
+    [HttpDelete("{id}")]
+public async Task<IActionResult> Delete(int id)
+{
+    var invoice = await _context.Invoices.FindAsync(id);
+
+    if (invoice == null)
+        return NotFound();
+
+    if (invoice.Status != InvoiceStatus.Created)
+        return BadRequest("Only created invoices can be deleted");
+
+    _context.Invoices.Remove(invoice);
+    await _context.SaveChangesAsync();
+
+    return Ok();
+    [HttpPatch("{id}/archive")]
+public async Task<IActionResult> Archive(int id)
+{
+    var invoice = await _context.Invoices.FindAsync(id);
+
+    if (invoice == null)
+        return NotFound();
+
+    invoice.DeletedAt = DateTimeOffset.UtcNow;
+    invoice.UpdatedAt = DateTimeOffset.UtcNow;
+
+    await _context.SaveChangesAsync();
+
+    return Ok();
+    [HttpGet("{id}/download")]
+public async Task<IActionResult> Download(int id)
+{
+    var invoice = await _context.Invoices
+        .Include(i => i.Rows)
+        .FirstOrDefaultAsync(i => i.Id == id);
+
+    if (invoice == null)
+        return NotFound();
+
+    using var stream = new MemoryStream();
+
+    var writer = new iText.Kernel.Pdf.PdfWriter(stream);
+    var pdf = new iText.Kernel.Pdf.PdfDocument(writer);
+    var document = new iText.Layout.Document(pdf);
+
+    document.Add(new iText.Layout.Element.Paragraph($"Invoice #{invoice.Id}"));
+    document.Add(new iText.Layout.Element.Paragraph($"Total: {invoice.TotalSum}"));
+
+    document.Close();
+
+    return File(stream.ToArray(), "application/pdf", $"invoice_{id}.pdf");
+}
+}
+}
+}
     }
 }
